@@ -55,3 +55,26 @@ class PlannedScheduleResponse(PlannedScheduleBase):
 
     class Config:
         from_attributes = True
+
+class StatusLogCreate(BaseModel):
+    agent_id: int
+    status: AgentStatus
+    timestamp: Optional[datetime] = None
+
+class StatusLogResponse(BaseModel):
+    id: int
+    agent_id: int
+    status: AgentStatus
+    timestamp: datetime
+    duration_seconds: Optional[int] = None
+
+class Config:
+    from_attributes = True
+
+class AdherenceCheckResponse(BaseModel):
+    agent_id: int
+    current_status: AgentStatus
+    expected_status: AgentStatus
+    is_adherent: bool
+    message: str
+    checked_at: datetime
