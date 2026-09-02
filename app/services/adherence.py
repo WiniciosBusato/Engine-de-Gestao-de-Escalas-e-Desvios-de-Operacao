@@ -96,15 +96,21 @@ def calculate_daily_adherence(
     agent_id: int,
     target_date: date
 ) -> Optional[dict]:
-    #1- Busca a escala do agente para o dia solicitado
-    schedule = (
+    # 1. Busca a escala do agente comparando em memória/string para o SQLite
+    target_str = target_date.strftime("%Y-%m-%d") if hasattr(target_date, "strftime") else str(target_date)
+
+    schedules = (
         db.query(models.PlannedSchedule)
-        .filter(
-            models.PlannedSchedule.agent_id == agent_id,
-            models.PlannedSchedule.date == target_date
-        )
-        .first()
+        .filter(models.PlannedSchedule.agent_id == agent_id)
+        .all()
     )
+
+    schedule = None
+    for s in schedules:
+        s_date = s.date.strftime("%Y-%m-%d") if hasattr(s.date, "strftime") else str(s.date)
+        if s_date == target_str:
+            schedule = s
+            break
 
     if not schedule:
         return None
