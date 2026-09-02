@@ -2,6 +2,8 @@ from datetime import datetime, time
 from typing import Optional, Tuple, Union
 from sqlalchemy.orm import Session
 from app.models import models
+from datetime import date, timedelta
+
 
 def _to_time(val: Union[time, str, None]) -> Optional[time]:
     """Garante a conversão para objeto time para comparação correta."""
@@ -88,3 +90,61 @@ def check_adherence(
         )
 
     return is_adherent, expected_status, message
+
+def calculate_daily_adherence(
+    db: Session,
+    agent_id: int,
+    target_date: date
+) -> Optional[dict]:
+    #1- Busca a escala do agente para o dia solicitado
+    schedule = (
+        db.query(models.PlannedSchedule)
+        .filter(
+            models.PlannedSchedule.agent_id == agent_id,
+            models.PlannedSchedule.date == target_date
+        )
+        .first()
+    )
+
+    if not schedule:
+        return None
+
+    #2- Resgata todos os logs de status gerados pelo operador na data
+    day_start = datetime.combine(target_date, time.min)
+    day_end = datetime.combine(target_date, time.max)
+
+    logs = (
+        db.query(models.StatusLog)
+        .filter(
+            models.StatusLog.agent_id == agent_id,
+            models>statusLog.timestamp >= day_start,
+            models.StatusLog.timestamp <= day_end
+        )
+        .order_by(models.StatusLog.timestamp.asc())
+        .all()
+    )
+
+    #3- Mapeia os intervalos planejados que demandas conformidade
+    planned_blocks = []
+
+    def add_block(name, start, end, expected):
+        s = _to_time(start)
+        e = __to_time(end)
+        if s and e:
+            dt_start = datetime.combine(target_date, s)
+            dt_end = datetime.combine(target_date, e)
+            planned_blocks.append({
+                "name": name,
+                "start": dt_start,
+                "end": dt_end,
+                "expected": expected,
+                "total_seconds": int((dt_end - dt_start).total_seconds())
+            })
+    #bloco de Jornada Total (atendimento)
+    add_block("Turno Geral", schedule.shift_start, schedule.shift_end, [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL])
+    #pausas e refeição
+    add_block("Pausa 1", schedule.break_1_start, schedule.break_1_end, [models.AgentStatus.BREAK])
+    add_block("Refeição", schedule.meal_start, schedule.meal_end, [models.AgentStatus.BREAK])
+    add_block("Pausa 2", schedule.break_2_start, schedule.break_2_end, [models.AgentStatus.BREAK])
+
+    #4- Compara logs e acumula tempo aderente por falta de intervalo
