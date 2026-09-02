@@ -78,3 +78,20 @@ class AdherenceCheckResponse(BaseModel):
     is_adherent: bool
     message: str
     checked_at: datetime
+
+class AgentOverviewItem(BaseModel):
+    agent_id: int
+    agent_name: str
+    skill_group: str
+    current_status: AgentStatus
+    expected_status: AgentStatus
+    is_adherent: bool
+    message: str
+
+class AdherenceOverviewResponse(BaseModel):
+    total_agents: int
+    adherent_count: int
+    non_adherent_count: int
+    adherence_rate: float
+    timestamp: datetime
+    agents: List[AgentOverviewItem]
