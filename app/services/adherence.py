@@ -148,7 +148,7 @@ def calculate_daily_adherence(
     add_block("Pausa 2", schedule.break_2_start, schedule.break_2_end, [models.AgentStatus.BREAK])
 
     #4- Compara logs e acumula tempo aderente por falta de intervalo
-    block_detail = []
+    block_details = []
     total_planned = 0
     total_adherent = 0
 
@@ -174,7 +174,7 @@ def calculate_daily_adherence(
         adherent_sec = min(adherent_sec, block["total_seconds"])
         rate = round((adherent_sec / block["total_seconds"] * 100), 2) if block["total_seconds"] > 0 else 0.0
 
-        block_detail.append({
+        block_details.append({
             "interval_type": block["name"],
             "planned_start": block["start"].strftime("%H:%M:%S"),
             "planned_end": block["end"].strftime("%H:%M:%S"),
@@ -185,3 +185,12 @@ def calculate_daily_adherence(
 
         total_planned += block["total_seconds"]
         total_adherent += adherent_sec
+
+    overall_rate = round((total_adherent / total_planned * 100), 2) if total_planned > 0 else 0.0
+
+    return {
+        "total_planned_seconds": total_planned,
+        "total_adherent_seconds": total_adherent,
+        "overall_adherence_rate": overall_rate,
+        "intervals": block_details
+    }
