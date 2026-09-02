@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
-
+from datetime import datetime, date
+from typing import Optional
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
-from app.services.adherence import check_adherence
+from app.services.adherence import check_adherence, calculate_daily_adherence
 
 # A variável que o main.py está procurando:
 router = APIRouter(prefix="/status", tags=["Status & Adherence"])
@@ -96,6 +96,34 @@ def get_adherence_overview(db: Session = Depends(get_db)):
         timestamp=now,
         agents=overview_items
     )
+
+
+@router.get("/adherence/daily/{agent_id}", response_model=schemas.DailyAdherenceResponse)
+def get_daily_adherence(
+    agent_id: int,
+    report_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente não encontrado")
+    
+    target_date = report_date or date.today()
+    result = calculate_daily_adherence(db=db, agent_id=agent_id, target_date=target_date)
+
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Escala não encontrada para a data {target_date}")
+
+    return schemas.DailyAdherenceResponse(
+        agent_id=agent.id,
+        agent_name=agent.name,
+        date=target_date,
+        total_planned_seconds=result["total_planned_seconds"],
+        total_adherent_seconds=result["total_adherent_seconds"],
+        overall_adherence_rate=result["overall_adherence_rate"],
+        intervals=[schemas.DailyAdherenceDetail(**item) for item in result["intervals"]]
+    )
+
 
 @router.get("/adherence/{agent_id}", response_model=schemas.AdherenceCheckResponse)
 def get_agent_adherence(agent_id: int, db: Session = Depends(get_db)):
