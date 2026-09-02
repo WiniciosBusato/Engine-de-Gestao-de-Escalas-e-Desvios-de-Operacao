@@ -117,7 +117,7 @@ def calculate_daily_adherence(
         db.query(models.StatusLog)
         .filter(
             models.StatusLog.agent_id == agent_id,
-            models>statusLog.timestamp >= day_start,
+            models.StatusLog.timestamp >= day_start,
             models.StatusLog.timestamp <= day_end
         )
         .order_by(models.StatusLog.timestamp.asc())
@@ -129,7 +129,7 @@ def calculate_daily_adherence(
 
     def add_block(name, start, end, expected):
         s = _to_time(start)
-        e = __to_time(end)
+        e = _to_time(end)
         if s and e:
             dt_start = datetime.combine(target_date, s)
             dt_end = datetime.combine(target_date, e)
@@ -148,3 +148,40 @@ def calculate_daily_adherence(
     add_block("Pausa 2", schedule.break_2_start, schedule.break_2_end, [models.AgentStatus.BREAK])
 
     #4- Compara logs e acumula tempo aderente por falta de intervalo
+    block_detail = []
+    total_planned = 0
+    total_adherent = 0
+
+    for block in planned_blocks:
+        adherent_sec = 0
+        for log in logs:
+            if not log.duration_seconds or log.duration_seconds <= 0:
+                continue
+
+            log_start = log.timestamp
+            log_end = log_start + timedelta(seconds=log.duration_seconds)
+
+            #calcula a sobreposição entre o log do operador e a janela planejada
+            overlap_start = max(log_start, block["start"])
+            overlap_end = min(log_end, block["end"])
+
+            if overlap_start < overlap_end:
+                overlap_sec = int((overlap_end - overlap_start).total_seconds())
+                if log.status in block["expected"]:
+                    adherent_sec += overlap_sec
+
+        #limita para não exceder o planejamento
+        adherent_sec = min(adherent_sec, block["total_seconds"])
+        rate = round((adherent_sec / block["total_seconds"] * 100), 2) if block["total_seconds"] > 0 else 0.0
+
+        block_detail.append({
+            "interval_type": block["name"],
+            "planned_start": block["start"].strftime("%H:%M:%S"),
+            "planned_end": block["end"].strftime("%H:%M:%S"),
+            "planned_seconds": block["total_seconds"],
+            "adherent_seconds": adherent_sec,
+            "adherence_rate": rate
+        })
+
+        total_planned += block["total_seconds"]
+        total_adherent += adherent_sec
