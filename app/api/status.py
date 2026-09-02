@@ -44,6 +44,59 @@ def log_agent_status(payload: schemas.StatusLogCreate, db: Session = Depends(get
 
     return new_log
 
+@router.get("/adherence/overview", response_model=schemas.AdherenceOverviewResponse)
+def get_adherence_overview(db: Session = Depends(get_db)):
+    agents = db.query(models.Agent).all()
+    now = datetime.now()
+
+    overview_items = []
+    adherent_count = 0
+
+    for agent in agents:
+        #busca o ultimo status registrado para o operador
+        latest_log = (
+            db.query(models.StatusLog)
+            .filter(models.StatusLog.agent_id == agent.id)
+            .order_by(models.StatusLog.timestamp.desc())
+            .first()
+        )
+        current_status = latest_log.status if latest_log else models.AgentStatus.OFFLINE
+
+        #execute a regra de negocio de aderencia
+        is_adherent, expected_status, message = check_adherence(
+            db=db,
+            agent_id=agent.id,
+            current_status=current_status,
+            check_time=now
+        )
+
+        if is_adherent:
+            adherent_count += 1
+
+        overview_items.append(
+            schemas.AgentOverviewItem(
+                agent_id=agent.id,
+                agent_name=agent.name,
+                skill_group=agent.skill_group,
+                current_status=current_status,
+                expected_status=expected_status,
+                is_adherent=is_adherent,
+                message=message
+            )
+        )
+
+    total_agents = len(agents)
+    rate = round((adherent_count / total_agents* 100), 2) if total_agents > 0 else 0.0
+
+    return schemas.AdherenceOverviewResponse(
+        total_agents=total_agents,
+        adherent_count=adherent_count,
+        non_adherent_count=total_agents - adherent_count,
+        adherence_rate=rate,
+        timestamp=now,
+        agents=overview_items
+    )
+
 @router.get("/adherence/{agent_id}", response_model=schemas.AdherenceCheckResponse)
 def get_agent_adherence(agent_id: int, db: Session = Depends(get_db)):
     latest_status_log = (
