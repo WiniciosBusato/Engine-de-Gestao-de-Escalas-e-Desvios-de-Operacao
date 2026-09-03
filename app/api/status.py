@@ -45,7 +45,11 @@ def log_agent_status(payload: schemas.StatusLogCreate, db: Session = Depends(get
     return new_log
 
 @router.get("/adherence/overview", response_model=schemas.AdherenceOverviewResponse)
-def get_adherence_overview(db: Session = Depends(get_db)):
+def get_adherence_overview(
+    check_time: Optional[datetime] = None,
+    grace_period_minutes: int = 3,
+    db: Session = Depends(get_db)
+):
     agents = db.query(models.Agent).all()
     now = datetime.now()
 
@@ -126,29 +130,20 @@ def get_daily_adherence(
 
 
 @router.get("/adherence/{agent_id}", response_model=schemas.AdherenceCheckResponse)
-def get_agent_adherence(agent_id: int, db: Session = Depends(get_db)):
-    latest_status_log = (
-        db.query(models.StatusLog)
-        .filter(models.StatusLog.agent_id == agent_id)
-        .order_by(models.StatusLog.timestamp.desc())
-        .first()
-    )
+def get_agent_adherence(
+    agent_id: int,
+    check_time: Optional[datetime] = None,
+    grace_period_minutes: int = 3,
+    db: Session = Depends(get_db)
+):
+    agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente não encontrado")
 
-    current_status = latest_status_log.status if latest_status_log else models.AgentStatus.OFFLINE
-    now = datetime.now()
-
-    is_adherent, expected, message = check_adherence(
-        db=db, 
-        agent_id=agent_id, 
-        current_status=current_status, 
-        check_time=now
-    )
-
-    return schemas.AdherenceCheckResponse(
+    result = check_adherence(
+        db=db,
         agent_id=agent_id,
-        current_status=current_status,
-        expected_status=expected,
-        is_adherent=is_adherent,
-        message=message,
-        checked_at=now
+        check_time=check_time,
+        grace_period_minutes=grace_period_minutes
     )
+    return result
