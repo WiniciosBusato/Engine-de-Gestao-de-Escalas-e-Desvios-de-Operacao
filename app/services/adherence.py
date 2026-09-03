@@ -288,3 +288,124 @@ def calculate_daily_adherence(
         "overall_adherence_rate": overall_rate,
         "intervals": intervals_detail
     }
+
+def get_agent_infractions(
+    db: Session,
+    agent_id: int,
+    target_date: date 
+) -> Optional[dict]:
+    """
+    Identifica e lista todos os eventos/janelas de tempo em que o operador
+    esteve em não conformidade com a escala planejada ao longo do dia
+    """
+
+    target_str = target_date.strftime("%Y-%m-%d") if hasattr(target_date, "strftime") else str(target_date)
+
+    #1- Busca a escala do agente
+    schedules = (
+        db.query(models.PlannedSchedule)
+        .filter(models.PlannedSchedule.agent_id == agent_id)
+        .all()
+    )
+    schedule = None
+    for s in schedules:
+        s_date = s.date.strftime("%Y-%m-%d") if hasattr(s.date,"strftime") else str(s.date)
+        if s_date == target_str:
+            schedule = s
+            break
+
+    if not schedule:
+        return None
+
+    agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
+    agent_name = agent.name if agent else f"Agent {agent_id}"
+
+    #2- Reconstroi a linha do tempo de status reais do dia
+    start_of_day = datetime.combine(target_date, time.min)
+    end_of_day = datetime.combine(target_date, time.max)
+
+    logs = (
+        db.query(models.StatusLog)
+        .filter(
+            models.StatusLog.agent_id == agent_id,
+            models.StatusLog.timestamp >= start_of_day
+            models.StatusLog.timestamp <= end_of_day
+        )
+        .order_by(models.StatusLog.timestamp.asc())
+        .all()
+    )
+
+    prior_log = (
+        db.query(models.StatusLog)
+        .filter(
+            models.StatusLog.agent_id == agent_id,
+            models.StatusLog.timestamp < start_of_day
+        )
+        .order_by(models.StatusLog.timestamp.desc())
+        .first()
+    )
+    initial_status = prior_log.status if prior_log else models.AgentStatus.OFFLINE
+
+    log_intervals = []
+    current_time_marker = start_of_day
+    current_state = initial_status
+
+    for log in logs:
+        if log.timestamp > current_time_marker:
+            log_intervals.append({
+                "start": current_time_marker,
+                "end": log.timestamp,
+                "status": current_state
+            })
+        current_time_marker = log.timestamp
+        current_state = log.status
+
+    if current_time_marker < end_of_day:
+        log_intervals.append({
+                "start": current_time_marker,
+                "end": end_of_day,
+                "status": current_state
+        })
+
+    #3- mapeia os blocos planejados
+    def make_interval(name, start_t, end_t, exp_status):
+        if not start_t or not end_t:
+            return None
+        st = _to_time(start_t)
+        et = _to_time(end_t)
+        if not st or not et:
+            return None
+        return {
+            "name": name,
+            "start": datetime.combine(target_date, st),
+            "end": datetime.combine(target_date, et),
+            "expected_status": exp_status
+        }
+
+    planned_blocks = [
+        make_interval("Pausa 1", schedule.break_1_start, schedule.break_1_end, models.AgentStatus.BREAK),
+        make_interval("Refeição", schedule.meal_start, schedule.meal_end, models.AgentStatus.BREAK),
+        make_interval("Pausa 2", schedule.break_2_start, schedule.break_2_end, models.AgentStatus.BREAK),
+        make_interval("Turno de Atendimento", schedule.shift_start, schedule.shift_end, models.AgentStatus.AVAILABLE),
+    ]
+    planned_blocks = [b for b in planned_blocks if b is not None]
+
+    infractions = []
+    total_infraction_seconds = 0
+
+    #4- Avalia as colisões e identifica desvios
+    for block in planned_blocks:
+        b_start = block["start"]
+        b_end = block["end"]
+        exp_status = block["expected_status"]
+
+        for l_int in log_intervals:
+            overlap_start = max(b_start, l_int["start"])
+            overlap_end = min(b_end, l_int["end"])
+
+            if overlap_start < overlap_end:
+                is_match = False
+                if exp_status == models.AgentStatus.AVAILABLE:
+                    is_match = l_int["status"] in [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL]
+                else:
+                    is_match = (l_int["status"] == exp_status)
