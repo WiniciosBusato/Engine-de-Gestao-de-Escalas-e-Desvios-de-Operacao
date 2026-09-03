@@ -117,7 +117,7 @@ class AdherenceCheckResponse(BaseModel):
     agent_id: int
     current_status: AgentStatus
     expected_status: AgentStatus
-    is_adherence: bool
+    is_adherent: bool
     in_grace_period: bool = False
     message: str
     checked_at: datetime
