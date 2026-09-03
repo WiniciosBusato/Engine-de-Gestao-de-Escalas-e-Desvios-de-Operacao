@@ -121,3 +121,20 @@ class AdherenceCheckResponse(BaseModel):
     in_grace_period: bool = False
     message: str
     checked_at: datetime
+
+class AdhereneInfractionItem(BaseModel):
+    interval_name: str
+    expected_status: AgentStatus
+    actual_status: AgentStatus
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: int
+    duration_formatted: str
+
+class AgentInfractionResponse(BaseModel):
+    agent_id: int
+    agent_name: str
+    date: date
+    total_infractions_count: int
+    total_infraction_seconds:int
+    infractions: list[AdherenceInfractionItem]
