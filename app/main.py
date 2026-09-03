@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.core.database import engine
 from app.models.models import Base
-from app.api import agents, schedules, status
+from app.api import agents, schedules, status, reports
 
 #Cria as tabelas no banco de dados caso elas não existam
 Base.metadata.create_all(bind=engine)
@@ -17,6 +17,7 @@ app = FastAPI(
 app.include_router(agents.router)
 app.include_router(schedules.router)
 app.include_router(status.router)
+app.include_router(reports.router)
 
 #Endpoint raiz só para teste de APi
 @app.get("/")
