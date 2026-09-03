@@ -1,33 +1,49 @@
-from datetime import date, datetime, time
-from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
+from datetime import datetime, time, date
 from app.models.models import AgentStatus
 
-# --- AGENT SCHEMAS ---
+#--- SCHEMAS PARA AGENT ---
 class AgentBase(BaseModel):
     name: str
-    skill_group: str
+    email: EmailStr
+    skill_group: Optional[str] = None
 
 class AgentCreate(AgentBase):
-    pass
+    pass #Para criar, precisamos apenas dos dados base
 
 class AgentResponse(AgentBase):
     id: int
-    created_at: datetime
+
+    class Config:
+        from_attributes = True #Permite que o Pydantic leia objetos do SQLAlchemy do SQLAlchemy
+
+# --- SCHEMAS PARA STATUS LOG ---
+class StatusLogBase(BaseModel):
+    agent_id: int
+    status: AgentStatus
+
+class StatusLogCreate(StatusLogBase):
+    pass
+
+class StatusLogResponse(StatusLogBase):
+    id: int
+    timestamp: datetime
+    duration_seconds: Optional[int] = None
 
     class Config:
         from_attributes = True
 
-# --- SCHEDULE SCHEMAS ---
+# --- SCHEMAS PARA PLANNED SCHEDULE ---
 class PlannedScheduleBase(BaseModel):
     agent_id: int
     date: date
     shift_start: time
     shift_end: time
-    meal_start: Optional[time] = None
-    meal_end: Optional[time] = None
     break_1_start: Optional[time] = None
     break_1_end: Optional[time] = None
+    meal_start: Optional[time] = None
+    meal_end: Optional[time] = None
     break_2_start: Optional[time] = None
     break_2_end: Optional[time] = None
 
@@ -40,7 +56,6 @@ class PlannedScheduleResponse(PlannedScheduleBase):
     class Config:
         from_attributes = True
 
-# --- STATUS SCHEMAS ---
 class StatusLogCreate(BaseModel):
     agent_id: int
     status: AgentStatus
@@ -53,10 +68,9 @@ class StatusLogResponse(BaseModel):
     timestamp: datetime
     duration_seconds: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+class Config:
+    from_attributes = True
 
-# --- ADHERENCE SCHEMAS ---
 class AdherenceCheckResponse(BaseModel):
     agent_id: int
     current_status: AgentStatus
@@ -65,7 +79,6 @@ class AdherenceCheckResponse(BaseModel):
     message: str
     checked_at: datetime
 
-# --- OVERVIEW SCHEMAS ---
 class AgentOverviewItem(BaseModel):
     agent_id: int
     agent_name: str
@@ -83,7 +96,6 @@ class AdherenceOverviewResponse(BaseModel):
     timestamp: datetime
     agents: List[AgentOverviewItem]
 
-# --- DAILY ADHERENCE SCHEMAS ---
 class DailyAdherenceDetail(BaseModel):
     interval_type: str
     planned_start: str
@@ -100,3 +112,12 @@ class DailyAdherenceResponse(BaseModel):
     total_adherent_seconds: int
     overall_adherence_rate: float
     intervals: List[DailyAdherenceDetail]
+
+class AdherenceCheckResponse(BaseModel):
+    agent_id: int
+    current_status: AgentStatus
+    expected_status: AgentStatus
+    is_adherence: bool
+    in_grace_period: bool = False
+    message: str
+    checked_at: datetime
