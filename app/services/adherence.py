@@ -1,4 +1,4 @@
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.models import models
@@ -292,11 +292,13 @@ def calculate_daily_adherence(
 def get_agent_infractions(
     db: Session,
     agent_id: int,
-    target_date: date
+    target_date: date,
+    grace_period_minutes: int = 0
 ) -> Optional[dict]:
     """
     Identifica e lista todos os eventos/janelas de tempo em que o operador
-    esteve em não conformidade com a escala planejada ao longo do dia.
+    esteve em não conformidade com a escala planejada ao longo do dia,
+    respitando a margem de tolerancia configurada.
     """
     target_str = target_date.strftime("%Y-%m-%d") if hasattr(target_date, "strftime") else str(target_date)
 
@@ -391,6 +393,7 @@ def get_agent_infractions(
 
     infractions = []
     total_infraction_seconds = 0
+    grace_delta = timedelta(minutes=grace_period_minutes)
 
     # 4. Avalia as colisões e identifica desvios
     for block in planned_blocks:
@@ -411,6 +414,15 @@ def get_agent_infractions(
 
                 # Se não for aderente, gera registro de infração
                 if not is_match:
+                    is_at_transtion_start = (overlap_start == b_start)
+                    overlap_duration = overlap_end - overlap_start
+
+                    if grace_period_minutes > 0 and is_at_transtion_start:
+                        if overlap_duration <= grace_delta:
+                            continue
+                        else:
+                            overlap_start = overlap_start + grace_delta
+
                     dur_sec = int((overlap_end - overlap_start).total_seconds())
                     if dur_sec > 0:
                         total_infraction_seconds += dur_sec
