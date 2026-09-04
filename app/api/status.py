@@ -5,7 +5,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
-from app.services.adherence import check_adherence, calculate_daily_adherence
+from app.services.adherence import check_adherence, calculate_daily_adherence, get_agent_infractions
 
 # A variável que o main.py está procurando:
 router = APIRouter(prefix="/status", tags=["Status & Adherence"])
@@ -146,4 +146,20 @@ def get_agent_adherence(
         check_time=check_time,
         grace_period_minutes=grace_period_minutes
     )
+    return result
+
+@router.get("/adherence/{agent_id}/infractions", response_model=schemas.AgentInfractionResponse)
+def get_agent_infractions_report(
+    agent_id: int,
+    target_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    query_date = target_date or date.today()
+    result = get_agent_infractions(db=db, agent_id=agent_id, target_date=query_date)
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nenhuma escala encontrada para o agente {agent_id} na data {query_date}."
+        )
     return result
