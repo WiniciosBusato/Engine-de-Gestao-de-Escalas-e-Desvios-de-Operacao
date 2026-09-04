@@ -292,16 +292,15 @@ def calculate_daily_adherence(
 def get_agent_infractions(
     db: Session,
     agent_id: int,
-    target_date: date 
+    target_date: date
 ) -> Optional[dict]:
     """
     Identifica e lista todos os eventos/janelas de tempo em que o operador
-    esteve em não conformidade com a escala planejada ao longo do dia
+    esteve em não conformidade com a escala planejada ao longo do dia.
     """
-
     target_str = target_date.strftime("%Y-%m-%d") if hasattr(target_date, "strftime") else str(target_date)
 
-    #1- Busca a escala do agente
+    # 1. Busca a escala do agente
     schedules = (
         db.query(models.PlannedSchedule)
         .filter(models.PlannedSchedule.agent_id == agent_id)
@@ -309,7 +308,7 @@ def get_agent_infractions(
     )
     schedule = None
     for s in schedules:
-        s_date = s.date.strftime("%Y-%m-%d") if hasattr(s.date,"strftime") else str(s.date)
+        s_date = s.date.strftime("%Y-%m-%d") if hasattr(s.date, "strftime") else str(s.date)
         if s_date == target_str:
             schedule = s
             break
@@ -320,7 +319,7 @@ def get_agent_infractions(
     agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
     agent_name = agent.name if agent else f"Agent {agent_id}"
 
-    #2- Reconstroi a linha do tempo de status reais do dia
+    # 2. Reconstitui a linha do tempo de status reais do dia
     start_of_day = datetime.combine(target_date, time.min)
     end_of_day = datetime.combine(target_date, time.max)
 
@@ -328,7 +327,7 @@ def get_agent_infractions(
         db.query(models.StatusLog)
         .filter(
             models.StatusLog.agent_id == agent_id,
-            models.StatusLog.timestamp >= start_of_day
+            models.StatusLog.timestamp >= start_of_day,
             models.StatusLog.timestamp <= end_of_day
         )
         .order_by(models.StatusLog.timestamp.asc())
@@ -362,12 +361,12 @@ def get_agent_infractions(
 
     if current_time_marker < end_of_day:
         log_intervals.append({
-                "start": current_time_marker,
-                "end": end_of_day,
-                "status": current_state
+            "start": current_time_marker,
+            "end": end_of_day,
+            "status": current_state
         })
 
-    #3- mapeia os blocos planejados
+    # 3. Mapeia os blocos planejados
     def make_interval(name, start_t, end_t, exp_status):
         if not start_t or not end_t:
             return None
@@ -393,7 +392,7 @@ def get_agent_infractions(
     infractions = []
     total_infraction_seconds = 0
 
-    #4- Avalia as colisões e identifica desvios
+    # 4. Avalia as colisões e identifica desvios
     for block in planned_blocks:
         b_start = block["start"]
         b_end = block["end"]
@@ -410,7 +409,7 @@ def get_agent_infractions(
                 else:
                     is_match = (l_int["status"] == exp_status)
 
-                #Se não for aderente, gera registro de infração
+                # Se não for aderente, gera registro de infração
                 if not is_match:
                     dur_sec = int((overlap_end - overlap_start).total_seconds())
                     if dur_sec > 0:
@@ -428,11 +427,12 @@ def get_agent_infractions(
                             "duration_seconds": dur_sec,
                             "duration_formatted": formatted_dur
                         })
+
     return {
         "agent_id": agent_id,
         "agent_name": agent_name,
         "date": target_date,
         "total_infractions_count": len(infractions),
         "total_infraction_seconds": total_infraction_seconds,
-        "infractions": infractions    
+        "infractions": infractions
     }

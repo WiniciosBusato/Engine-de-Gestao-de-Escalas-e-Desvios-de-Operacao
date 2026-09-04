@@ -131,6 +131,15 @@ class AdhereneInfractionItem(BaseModel):
     duration_seconds: int
     duration_formatted: str
 
+class AdherenceInfractionItem(BaseModel):
+    interval_name: str
+    expected_status: AgentStatus
+    actual_status: AgentStatus
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: int
+    duration_formatted: str
+    
 class AgentInfractionResponse(BaseModel):
     agent_id: int
     agent_name: str
