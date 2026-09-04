@@ -17,16 +17,32 @@ def _to_time(val) -> Optional[time]:
 
 
 def check_adherence(
-    db: Session, 
-    agent_id: int, 
+    db: Session,
+    agent_id: int,
     check_time: Optional[datetime] = None,
-    grace_period_minutes: int = 3
-) -> dict:
-    check_time = check_time or datetime.now()
-    check_t = check_time.time()
-    target_str = check_time.date().strftime("%Y-%m-%d")
+    grace_period_minutes: int = 0
+) -> Optional[dict]:
+    """
+    Verifica a aderencia em tempo real do agente cruzando a escala planejada
+    com o ultimo status registrado, considerando o periodo de tolerancia (grace period).
+    """
+    check_dt = check_time or datetime.now()
+    check_date = check_dt.date()
+    target_str = check_date.strftime("%Y-%m-%d")
 
-    # 1. Recupera a escala do agente de forma compatível com SQLite (string/date)
+    # 1. Busca o status atual do operador PRIMEIRO para definir current_status
+    last_log = (
+        db.query(models.StatusLog)
+        .filter(
+            models.StatusLog.agent_id == agent_id,
+            models.StatusLog.timestamp <= check_dt
+        )
+        .order_by(models.StatusLog.timestamp.desc())
+        .first()
+    )
+    current_status = last_log.status if last_log else models.AgentStatus.OFFLINE
+
+    # 2. Busca a escala do agente para o dia
     schedules = (
         db.query(models.PlannedSchedule)
         .filter(models.PlannedSchedule.agent_id == agent_id)
@@ -39,72 +55,57 @@ def check_adherence(
             schedule = s
             break
 
+    # 3. Se nao houver escala, o operador e aderente apenas se estiver Offline
     if not schedule:
         return {
             "agent_id": agent_id,
-            "current_status": models.AgentStatus.OFFLINE,
+            "check_time": check_dt,
+            "current_status": current_status,
             "expected_status": models.AgentStatus.OFFLINE,
+            "current_interval_name": None,
             "is_adherent": current_status == models.AgentStatus.OFFLINE,
-            "in_grace_period": False,
-            "message": "Nenhuma escala planejada encontrada para hoje.",
-            "checked_at": check_time
+            "in_grace_period": False
         }
 
-    # 2. Resgata o último status registrado do agente
-    last_log = (
-        db.query(models.StatusLog)
-        .filter(models.StatusLog.agent_id == agent_id)
-        .order_by(models.StatusLog.timestamp.desc())
-        .first()
-    )
-    current_status = last_log.status if last_log else models.AgentStatus.OFFLINE
+    # 4. Mapeia os intervalos planejados do dia
+    def make_interval(name, start_t, end_t, exp_status):
+        if not start_t or not end_t:
+            return None
+        st = _to_time(start_t)
+        et = _to_time(end_t)
+        if not st or not et:
+            return None
+        return {
+            "name": name,
+            "start": datetime.combine(check_date, st),
+            "end": datetime.combine(check_date, et),
+            "expected_status": exp_status
+        }
 
-    # 3. Mapeia os horários dos blocos planejados
-    s_start = _to_time(schedule.shift_start)
-    s_end = _to_time(schedule.shift_end)
-    b1_start = _to_time(schedule.break_1_start)
-    b1_end = _to_time(schedule.break_1_end)
-    meal_start = _to_time(schedule.meal_start)
-    meal_end = _to_time(schedule.meal_end)
-    b2_start = _to_time(schedule.break_2_start)
-    b2_end = _to_time(schedule.break_2_end)
+    intervals = [
+        make_interval("Pausa 1", schedule.break_1_start, schedule.break_1_end, models.AgentStatus.BREAK),
+        make_interval("Refeicao", schedule.meal_start, schedule.meal_end, models.AgentStatus.BREAK),
+        make_interval("Pausa 2", schedule.break_2_start, schedule.break_2_end, models.AgentStatus.BREAK),
+        make_interval("Turno de Atendimento", schedule.shift_start, schedule.shift_end, models.AgentStatus.AVAILABLE),
+    ]
+    intervals = [i for i in intervals if i is not None]
 
-    expected_status = models.AgentStatus.OFFLINE
-    previous_expected = models.AgentStatus.OFFLINE
-    transition_time: Optional[datetime] = None
+    active_interval = None
+    for interval in intervals:
+        if interval["start"] <= check_dt <= interval["end"]:
+            active_interval = interval
+            break
 
-    def to_dt(t_val):
-        return datetime.combine(check_time.date(), t_val) if t_val else None
+    if active_interval:
+        expected_status = active_interval["expected_status"]
+        current_interval_name = active_interval["name"]
+        interval_start = active_interval["start"]
+    else:
+        expected_status = models.AgentStatus.OFFLINE
+        current_interval_name = None
+        interval_start = None
 
-    # Identifica o status esperado e o horário da transição
-    if b1_start and b1_end and b1_start <= check_t < b1_end:
-        expected_status = models.AgentStatus.BREAK
-        previous_expected = models.AgentStatus.AVAILABLE
-        transition_time = to_dt(b1_start)
-    elif meal_start and meal_end and meal_start <= check_t < meal_end:
-        expected_status = models.AgentStatus.BREAK
-        previous_expected = models.AgentStatus.AVAILABLE
-        transition_time = to_dt(meal_start)
-    elif b2_start and b2_end and b2_start <= check_t < b2_end:
-        expected_status = models.AgentStatus.BREAK
-        previous_expected = models.AgentStatus.AVAILABLE
-        transition_time = to_dt(b2_start)
-    elif s_start and s_end and s_start <= check_t < s_end:
-        expected_status = models.AgentStatus.AVAILABLE
-        if b1_end and check_t >= b1_end and (to_dt(check_t) - to_dt(b1_end)).total_seconds() <= grace_period_minutes * 60:
-            previous_expected = models.AgentStatus.BREAK
-            transition_time = to_dt(b1_end)
-        elif meal_end and check_t >= meal_end and (to_dt(check_t) - to_dt(meal_end)).total_seconds() <= grace_period_minutes * 60:
-            previous_expected = models.AgentStatus.BREAK
-            transition_time = to_dt(meal_end)
-        elif b2_end and check_t >= b2_end and (to_dt(check_t) - to_dt(b2_end)).total_seconds() <= grace_period_minutes * 60:
-            previous_expected = models.AgentStatus.BREAK
-            transition_time = to_dt(b2_end)
-        else:
-            previous_expected = models.AgentStatus.OFFLINE
-            transition_time = to_dt(s_start)
-
-    # 4. Avaliacao de conformidade (Aderencia)
+    # 5. Avaliacao de conformidade (Aderencia)
     if expected_status == models.AgentStatus.AVAILABLE:
         is_adherent = current_status in [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL]
     elif expected_status == models.AgentStatus.BREAK:
@@ -114,35 +115,23 @@ def check_adherence(
     else:
         is_adherent = (current_status == expected_status)
 
-    # 5. Aplicação da Margem de Tolerância (Grace Period)
+    # 6. Avaliacao do Grace Period (Tolerancia na virada de bloco)
     in_grace_period = False
-    if not is_adherent and transition_time:
-        diff_seconds = (check_time - transition_time).total_seconds()
-        
-        if 0 <= diff_seconds <= (grace_period_minutes * 60):
-            if (previous_expected == models.AgentStatus.AVAILABLE and current_status in [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL]) or \
-               (previous_expected == current_status):
-                is_adherent = True
-                in_grace_period = True
-
-    # Definição da mensagem descritiva
-    if in_grace_period:
-        message = f"Operador em tolerância ({grace_period_minutes} min) na transição de status."
-    elif is_adherent:
-        message = "Operador em conformidade com a escala planejada."
-    else:
-        message = f"Desvio detectado! Esperado: {expected_status.value}, Atual: {current_status.value}."
+    if not is_adherent and interval_start and grace_period_minutes > 0:
+        grace_limit = interval_start + timedelta(minutes=grace_period_minutes)
+        if check_dt <= grace_limit:
+            in_grace_period = True
+            is_adherent = True
 
     return {
         "agent_id": agent_id,
+        "check_time": check_dt,
         "current_status": current_status,
         "expected_status": expected_status,
+        "current_interval_name": current_interval_name,
         "is_adherent": is_adherent,
-        "in_grace_period": in_grace_period,
-        "message": message,
-        "checked_at": check_time
+        "in_grace_period": in_grace_period
     }
-
 
 def calculate_daily_adherence(
     db: Session,
