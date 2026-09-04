@@ -44,7 +44,7 @@ def check_adherence(
             "agent_id": agent_id,
             "current_status": models.AgentStatus.OFFLINE,
             "expected_status": models.AgentStatus.OFFLINE,
-            "is_adherent": False,
+            "is_adherent": current_status == models.AgentStatus.OFFLINE,
             "in_grace_period": False,
             "message": "Nenhuma escala planejada encontrada para hoje.",
             "checked_at": check_time
@@ -104,9 +104,13 @@ def check_adherence(
             previous_expected = models.AgentStatus.OFFLINE
             transition_time = to_dt(s_start)
 
-    # 4. Avaliação de conformidade direta
+    # 4. Avaliacao de conformidade (Aderencia)
     if expected_status == models.AgentStatus.AVAILABLE:
         is_adherent = current_status in [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL]
+    elif expected_status == models.AgentStatus.BREAK:
+        is_adherent = (current_status == models.AgentStatus.BREAK)
+    elif expected_status == models.AgentStatus.OFFLINE:
+        is_adherent = (current_status == models.AgentStatus.OFFLINE)
     else:
         is_adherent = (current_status == expected_status)
 
