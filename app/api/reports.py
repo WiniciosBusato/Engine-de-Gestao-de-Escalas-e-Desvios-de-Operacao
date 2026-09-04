@@ -34,6 +34,7 @@ def export_daily_adherence_csv(
 def export_infractions_csv(
     target_date: Optional[date] = None,
     agent_id: Optional[int] = None,
+    grace_period_minutes: int = 0,
     db: Session = Depends(get_db)
 ):
     query_date = target_date or date.today()
@@ -69,7 +70,7 @@ def export_infractions_csv(
 
         #3- Itera sobre os agentes e extrai as informações
         for agent in agents:
-            infractions_data = get_agent_infractions(db=db, agent_id=agent_id, target_date=query_date)
+            infractions_data = get_agent_infractions(db=db, agent_id=agent_id, target_date=query_date, grace_period_minutes=grace_period_minutes)
             if not infractions_data or not infractions_data.get("infractions"):
                 continue
 
