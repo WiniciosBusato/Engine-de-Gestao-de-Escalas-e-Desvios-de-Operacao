@@ -409,3 +409,30 @@ def get_agent_infractions(
                     is_match = l_int["status"] in [models.AgentStatus.AVAILABLE, models.AgentStatus.ON_CALL]
                 else:
                     is_match = (l_int["status"] == exp_status)
+
+                #Se não for aderente, gera registro de infração
+                if not is_match:
+                    dur_sec = int((overlap_end - overlap_start).total_seconds())
+                    if dur_sec > 0:
+                        total_infraction_seconds += dur_sec
+                        mins, secs = divmod(dur_sec, 60)
+                        hours, mins = divmod(mins, 60)
+                        formatted_dur = f"{hours:02d}:{mins:02d}:{secs:02d}"
+
+                        infractions.append({
+                            "interval_name": block["name"],
+                            "expected_status": exp_status,
+                            "actual_status": l_int["status"],
+                            "start_time": overlap_start,
+                            "end_time": overlap_end,
+                            "duration_seconds": dur_sec,
+                            "duration_formatted": formatted_dur
+                        })
+    return {
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "date": target_date,
+        "total_infractions_count": len(infractions),
+        "total_infraction_seconds": total_infraction_seconds,
+        "infractions": infractions    
+    }
