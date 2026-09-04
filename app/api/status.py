@@ -152,10 +152,11 @@ def get_agent_adherence(
 def get_agent_infractions_report(
     agent_id: int,
     target_date: Optional[date] = None,
+    grace_period_minutes: int = 0,
     db: Session = Depends(get_db)
 ):
     query_date = target_date or date.today()
-    result = get_agent_infractions(db=db, agent_id=agent_id, target_date=query_date)
+    result = get_agent_infractions(db=db, agent_id=agent_id, target_date=query_date, grace_period_minutes=grace_period_minutes)
 
     if not result:
         raise HTTPException(
