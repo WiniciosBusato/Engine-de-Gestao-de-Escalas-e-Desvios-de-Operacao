@@ -26,7 +26,7 @@ def export_daily_adherence_csv(
 
     return StreamingResponse(
         iter([csv_file.getvalue()]),
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
@@ -42,12 +42,13 @@ def export_infractions_csv(
     if agent_id:
         agents = db.query(models.Agent).filter(models.Agent.id == agent_id).all()
         if not agents:
-            raise HTTPException(status_code=404, detail=f"Agente {agent_id} não encontrado.")
+            raise HTTPException(status_code=404, detail=f"Agente {agent_id} nao encontrado.")
         else:
             agents = db.query(models.Agent).all()
 
         #2- Configura buffer em memória para o CSV
         output = io.StringIO()
+        output.write("\ufeff")
         writer = csv.writer(output, delimiter=";")
 
         #Cabeçalho do CSV
@@ -58,10 +59,10 @@ def export_infractions_csv(
         "Bloco Planejado",
         "Status Esperado",
         "Status Realizado",
-        "Início do Desvio",
+        "Inicio do Desvio",
         "Fim do Desvio",
-        "Duração (segundos)",
-        "Duração Formatada"
+        "Duracao (segundos)",
+        "Duracao Formatada"
         ])
 
         total_rows = 0
