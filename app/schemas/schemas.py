@@ -147,3 +147,23 @@ class AgentInfractionResponse(BaseModel):
     total_infractions_count: int
     total_infraction_seconds:int
     infractions: list[AdherenceInfractionItem]
+
+class TeamMemberRealtimeStatus(BaseModel):
+    agent_id: int
+    agent_name: str
+    current_status: AgentStatus
+    expected_status: Optional[AgentStatus] = None
+    current_interval_name: Optional[str] = None
+    is_adherent: bool
+    in_grace_period: bool
+    status_since: Optional[datetime] = None
+    duration_in_status_seconds: int = 0
+    duration_in_status_formatted: str = "00:00:00"
+
+class TeamRealtimeDashboardResponse(BaseModel):
+    timestamp: datetime
+    total_agents: int
+    adherent_count: int
+    non_adherent_count: int
+    adherence_rate: float
+    members: list[TeamMemberRealtimeStatus]
