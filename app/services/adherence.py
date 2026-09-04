@@ -448,3 +448,74 @@ def get_agent_infractions(
         "total_infraction_seconds": total_infraction_seconds,
         "infractions": infractions
     }
+
+def get_team_realtime_dashboard(
+        db: Session,
+        grace_period_minutes: int = 0
+) -> dict:
+    """
+    Gera a visão consolidada de aderencia de toda a equipe em tempo real.
+    """
+    now = datetime.now()
+    agents= db.query(models.Agent).all()
+
+    members = []
+    adherent_count = 0
+
+    for agent in agents:
+        #1- Checa a aderencia em tempo real do operador
+        adh_info = check_adherence(
+            db=db,
+            agent_id=agent.id,
+            check_time=now,
+            grace_period_minutes=grace_period_minutes
+        )
+
+        #2- Busca o ultimo log para calcular o tempo no status atual
+        last_log = (
+            db.query(models.StatusLog)
+            .filter(models.StatusLog.agent_id == agent.id)
+            .order_by(models.StatusLog.timestamp.desc())
+            .first()
+        )
+
+        duration_sec = 0
+        formatted_dur = "00:00:00"
+        status_since = None
+
+        if last_log:
+            status_since = last_log.timestamp
+            diff = now - status_since
+            duration_sec = max(0, int(diff.total_seconds()))
+            mins, secs= divmod(duration_sec, 60)
+            hours, mins = divmod(mins, 60)
+            formatted_dur = f"{hours:02d}:{mins:02d}:{secs:02d}"
+
+        is_adherent = adh_info.get("is_adherent",False) if adh_info else False
+        if is_adherent:
+            adherent_count += 1
+
+        members.append({
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "current_status": adh_info.get("current_status") if adh_info else models.AgentStatus.OFFLINE,
+            "expected_status": adh_info.get("expected_status") if adh_info else None,
+            "current_interval_name": adh_info.get("current_interval_name") if adh_info else None,
+            "is_adherent": is_adherent,
+            "in_grace_period": adh_info.get("in_grace_period", False) if adh_info else False,
+            "status_since": status_since,
+            "duration_in_status_seconds": duration_sec,
+            "duration_in_status_formatted": formatted_dur 
+        })
+
+    total_agents = len(agents)
+    adherence_rate = round((adherent_count / total_agents * 100), 2) if total_agents > 0 else 0.0
+
+    return {
+       "timestamp": now,
+        "total_agents": total_agents,
+        "adherent_count": adherent_count,
+        "non_adherent_count": total_agents - adherent_count,
+        "adherence_rate": adherence_rate,
+        "members": members 
+    }
