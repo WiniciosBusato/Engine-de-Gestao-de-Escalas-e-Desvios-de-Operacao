@@ -5,7 +5,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
-from app.services.adherence import check_adherence, calculate_daily_adherence, get_agent_infractions
+from app.services.adherence import check_adherence, calculate_daily_adherence, get_agent_infractions, get_team_realtime_dashboard
 
 # A variável que o main.py está procurando:
 router = APIRouter(prefix="/status", tags=["Status & Adherence"])
@@ -164,3 +164,17 @@ def get_agent_infractions_report(
             detail=f"Nenhuma escala encontrada para o agente {agent_id} na data {query_date}."
         )
     return result
+
+@router.get("/adherence/realtime/team", response_model=schemas.TeamRealtimeDashboardResponse)
+def get_realtime_team_adherence(
+    grace_period_minutes: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o painel consolidado em tempo real de toda a equipe,
+    com status atual, aderencia e duração de cada operador.
+    """
+    return get_team_realtime_dashboard(
+        db=db,
+        grace_period_minutes=grace_period_minutes
+    )
