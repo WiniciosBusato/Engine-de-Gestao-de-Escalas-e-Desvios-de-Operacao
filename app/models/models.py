@@ -54,3 +54,16 @@ class StatusLog(Base):
     duration_seconds = Column(Integer, nullable=True) # Preenchido quando o status mudar
 
     agent = relationship("Agent", back_populates="status_logs")
+
+class UserRole(str, enum.Enum):
+    AGENT = "AGENT"
+    SUPERVISOR = "SUPERVISOR"
+    ADMIN = "ADMIN"
+
+class User(Base):
+    __tablename__ = "users"
+id = Column(Integer, primary_key=True, index=True)
+username = Column(String, unique=True, index=True, nullable=False)
+emai = Column(String, unique=True, index=True, nullable=False)
+hashed_password = Column(String, nullable=False)
+role = Column(Enum(UserRole), default=UserRole.AGENT, nullable=False)
