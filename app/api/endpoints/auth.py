@@ -9,7 +9,7 @@ from app.schemas.auth import UserCreate, UserResponse, Token
 
 router = APIRouter()
 
-@router.post("\register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def resgister_user(user_in: UserCreate, db: Session = Depends(get_db)):
     """Registra um novo usuario no sistema (Agente, Supervisor ou ADMin)"""
     user_exists = db.query(User).filter((User.username == user_in.username) | (User.email == user_in.email)).first()
@@ -29,19 +29,24 @@ def resgister_user(user_in: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/token", response_model=Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:Session = Depends(get_db)):
-    """Recebe credenciais e devolve o token JWT."""
-    user = db.query(User).filter(User.usename == form_data.username).first()
+def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuário ou senha incorretos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    # Converte explicitamente o Enum para string antes de gerar o token
+    user_role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
 
     access_token = create_access_token(
         subject=user.username,
-        role=user.role.value,
+        role=user_role_str,
         agent_id=user.agent_id
     )
-    return {"access+token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer"}

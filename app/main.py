@@ -4,6 +4,7 @@ from app.models.models import Base
 from app.api import agents, schedules, status, reports
 from app.api.endpoints import auth
 
+
 #Cria as tabelas no banco de dados caso elas não existam
 Base.metadata.create_all(bind=engine)
 

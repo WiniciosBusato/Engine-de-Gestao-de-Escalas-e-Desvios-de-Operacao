@@ -62,8 +62,11 @@ class UserRole(str, enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
-id = Column(Integer, primary_key=True, index=True)
-username = Column(String, unique=True, index=True, nullable=False)
-emai = Column(String, unique=True, index=True, nullable=False)
-hashed_password = Column(String, nullable=False)
-role = Column(Enum(UserRole), default=UserRole.AGENT, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.AGENT, nullable=False)
+
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
+    agent = relationship("Agent", backref="user", uselist=False)
