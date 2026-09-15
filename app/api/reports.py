@@ -11,6 +11,8 @@ from app.services.reports import generate_daily_adherence_csv
 from app.core.database import get_db
 from app.models import models
 from app.services.adherence import get_agent_infractions
+from app.api.deps import require_roles
+from app.models.models import UserRole, User
 
 router = APIRouter(prefix="/reports", tags=["Reports & Exports"])
 
