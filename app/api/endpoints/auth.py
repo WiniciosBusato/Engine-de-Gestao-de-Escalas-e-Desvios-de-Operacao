@@ -10,12 +10,12 @@ from app.schemas.auth import UserCreate, UserResponse, Token
 router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def resgister_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    """Registra um novo usuario no sistema (Agente, Supervisor ou ADMin)"""
+def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+    """Registra um novo usuário no sistema (Agente, Supervisor ou Admin)."""
     user_exists = db.query(User).filter((User.username == user_in.username) | (User.email == user_in.email)).first()
     if user_exists:
-        raise HTTPException(status_code=400, detail="Usuario ou email já cadastrado.")
-
+        raise HTTPException(status_code=400, detail="Usuário ou email já cadastrado.")
+    
     new_user = User(
         username=user_in.username,
         email=user_in.email,
@@ -29,10 +29,8 @@ def resgister_user(user_in: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/token", response_model=Token)
-def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Recebe credenciais e devolve o token JWT."""
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -41,12 +39,9 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Converte explicitamente o Enum para string antes de gerar o token
-    user_role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
-
     access_token = create_access_token(
         subject=user.username,
-        role=user_role_str,
+        role=user.role.value,
         agent_id=user.agent_id
     )
     return {"access_token": access_token, "token_type": "bearer"}
