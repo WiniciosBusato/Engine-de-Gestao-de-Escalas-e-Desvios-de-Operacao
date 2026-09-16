@@ -112,16 +112,15 @@ def get_daily_adherence(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.SUPERVISOR, UserRole.ADMIN))
 ):
-    # Corpo identado com 4 espaços a partir daqui:
     agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agente não encontrado")
+        raise HTTPException(status_code=404, detail="Agente nao encontrado")
 
     target_date = report_date or date.today()
     result = calculate_daily_adherence(db=db, agent_id=agent_id, target_date=target_date)
 
     if not result:
-        raise HTTPException(status_code=404, detail=f"Escala não encontrada para a data {target_date}")
+        raise HTTPException(status_code=404, detail=f"Escala nao encontrada para a data {target_date}")
 
     return {
         "agent_id": agent.id,
@@ -132,7 +131,6 @@ def get_daily_adherence(
         "overall_adherence_rate": result["overall_adherence_rate"],
         "intervals": result.get("intervals", [])
     }
-
 @router.get("/adherence/{agent_id}", response_model=schemas.AdherenceCheckResponse)
 def get_agent_adherence(
     agent_id: int,
