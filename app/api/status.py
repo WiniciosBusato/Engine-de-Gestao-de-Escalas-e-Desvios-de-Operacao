@@ -6,6 +6,9 @@ from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
 from app.services.adherence import check_adherence, calculate_daily_adherence, get_agent_infractions, get_team_realtime_dashboard
+from app.api.deps import require_roles
+from app.models.models import UserRole, User
+
 
 # A variável que o main.py está procurando:
 router = APIRouter(prefix="/status", tags=["Status & Adherence"])
@@ -106,28 +109,29 @@ def get_adherence_overview(
 def get_daily_adherence(
     agent_id: int,
     report_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPERVISOR, UserRole.ADMIN))
 ):
+    # Corpo identado com 4 espaços a partir daqui:
     agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agente não encontrado")
-    
+
     target_date = report_date or date.today()
     result = calculate_daily_adherence(db=db, agent_id=agent_id, target_date=target_date)
 
     if not result:
         raise HTTPException(status_code=404, detail=f"Escala não encontrada para a data {target_date}")
 
-    return schemas.DailyAdherenceResponse(
-        agent_id=agent.id,
-        agent_name=agent.name,
-        date=target_date,
-        total_planned_seconds=result["total_planned_seconds"],
-        total_adherent_seconds=result["total_adherent_seconds"],
-        overall_adherence_rate=result["overall_adherence_rate"],
-        intervals=[schemas.DailyAdherenceDetail(**item) for item in result["intervals"]]
-    )
-
+    return {
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "date": target_date,
+        "total_planned_seconds": result["total_planned_seconds"],
+        "total_adherent_seconds": result["total_adherent_seconds"],
+        "overall_adherence_rate": result["overall_adherence_rate"],
+        "intervals": result.get("intervals", [])
+    }
 
 @router.get("/adherence/{agent_id}", response_model=schemas.AdherenceCheckResponse)
 def get_agent_adherence(
