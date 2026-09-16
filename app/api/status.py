@@ -146,7 +146,14 @@ def get_agent_adherence(
         check_time=check_time,
         grace_period_minutes=grace_period_minutes
     )
-    return result
+    status_msg = "Agente adrente a escala" if result.get("is_adherent") else "Agente fora de aderencia"
+
+    return {
+        **result,
+        "checked_at": result.get("check_time") or datetime.now(),
+        "message": status_msg
+    }
+
 
 @router.get("/adherence/{agent_id}/infractions", response_model=schemas.AgentInfractionResponse)
 def get_agent_infractions_report(
