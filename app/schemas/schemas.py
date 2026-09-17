@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import ConfigDict, BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, time, date
 from app.models.models import AgentStatus
@@ -15,8 +15,7 @@ class AgentCreate(AgentBase):
 class AgentResponse(AgentBase):
     id: int
 
-    class Config:
-        from_attributes = True #Permite que o Pydantic leia objetos do SQLAlchemy do SQLAlchemy
+    model_config = ConfigDict(from_attributes=True) #Permite que o Pydantic leia objetos do SQLAlchemy do SQLAlchemy
 
 # --- SCHEMAS PARA STATUS LOG ---
 class StatusLogBase(BaseModel):
@@ -31,8 +30,7 @@ class StatusLogResponse(StatusLogBase):
     timestamp: datetime
     duration_seconds: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- SCHEMAS PARA PLANNED SCHEDULE ---
 class PlannedScheduleBase(BaseModel):
@@ -53,8 +51,7 @@ class PlannedScheduleCreate(PlannedScheduleBase):
 class PlannedScheduleResponse(PlannedScheduleBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class StatusLogCreate(BaseModel):
     agent_id: int
