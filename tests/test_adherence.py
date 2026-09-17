@@ -78,3 +78,13 @@ def test_exportacao_relatorio_csv(auth_token):
     assert "text/csv" in response.headers.get("content-type", "")
     assert "ID Agente" in response.text
     assert "João Silva" in response.text
+
+def test_exportacao_relatorio_excel(auth_token):
+    """Valida o download do relatório em formato XLSX."""
+    response = client.get(
+        "/status/adherence/daily/1/export/excel?report_date=2026-09-15",
+        headers=auth_token
+    )
+    assert response.status_code == 200
+    assert "spreadsheetml.sheet" in response.headers.get("content-type", "")
+    assert len(response.content) > 0

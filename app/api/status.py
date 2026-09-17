@@ -270,3 +270,108 @@ def export_daily_adherence_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.get("/adherence/daily/{agent_id}/export/excel")
+def export_daily_adherence_excel(
+    agent_id: int,
+    report_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPERVISOR, UserRole.ADMIN))
+):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente nao encontrado")
+
+    target_date = report_date or date.today()
+    result = calculate_daily_adherence(db=db, agent_id=agent_id, target_date=target_date)
+
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Escala nao encontrada para a data {target_date}")
+
+    wb = openpyxl.Workbook()
+    
+    # Aba 1: Resumo Executivo
+    ws_resumo = wb.active
+    ws_resumo.title = "Resumo Geral"
+
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    data_font = Font(name="Calibri", size=11)
+    thin_border = Border(
+        left=Side(style="thin", color="D9D9D9"),
+        right=Side(style="thin", color="D9D9D9"),
+        top=Side(style="thin", color="D9D9D9"),
+        bottom=Side(style="thin", color="D9D9D9")
+    )
+
+    headers_resumo = ["ID Agente", "Nome Agente", "Data", "Segundos Planejados", "Segundos Aderentes", "Taxa Aderência (%)"]
+    ws_resumo.append(headers_resumo)
+
+    for col_num in range(1, len(headers_resumo) + 1):
+        cell = ws_resumo.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws_resumo.append([
+        agent.id,
+        agent.name,
+        target_date.isoformat(),
+        result["total_planned_seconds"],
+        result["total_adherent_seconds"],
+        result["overall_adherence_rate"]
+    ])
+
+    for col_num in range(1, len(headers_resumo) + 1):
+        cell = ws_resumo.cell(row=2, column=col_num)
+        cell.font = data_font
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Aba 2: Detalhamento por Intervalo
+    ws_detalhe = wb.create_sheet(title="Intervalos")
+    headers_detalhe = ["Tipo Intervalo", "Início Planejado", "Fim Planejado", "Segundos Planejados", "Segundos Aderentes", "Aderência (%)"]
+    ws_detalhe.append(headers_detalhe)
+
+    for col_num in range(1, len(headers_detalhe) + 1):
+        cell = ws_detalhe.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for idx, interval in enumerate(result.get("intervals", []), start=2):
+        ws_detalhe.append([
+            interval.get("interval_type"),
+            str(interval.get("planned_start")),
+            str(interval.get("planned_end")),
+            interval.get("planned_seconds"),
+            interval.get("adherent_seconds"),
+            interval.get("adherence_rate")
+        ])
+        for col_num in range(1, len(headers_detalhe) + 1):
+            cell = ws_detalhe.cell(row=idx, column=col_num)
+            cell.font = data_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Auto-ajuste de largura de coluna nas duas abas
+    for sheet in [ws_resumo, ws_detalhe]:
+        for col in sheet.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = openpyxl.utils.get_column_letter(col[0].column)
+            sheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
+    filename = f"aderencia_agente_{agent_id}_{target_date.isoformat()}.xlsx"
+
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
