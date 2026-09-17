@@ -1,3 +1,6 @@
+import io
+import csv
+from fastapi.responses import StreamingResponse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, date
@@ -212,4 +215,58 @@ def get_realtime_team_adherence(
     return get_team_realtime_dashboard(
         db=db,
         grace_period_minutes=grace_period_minutes
+    )
+
+
+@router.get("/adherence/daily/{agent_id}/export/csv")
+def export_daily_adherence_csv(
+    agent_id: int,
+    report_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPERVISOR, UserRole.ADMIN))
+):
+    agent = db.query(models.Agent).filter(models.Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agente nao encontrado")
+
+    target_date = report_date or date.today()
+    result = calculate_daily_adherence(db=db, agent_id=agent_id, target_date=target_date)
+
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Escala nao encontrada para a data {target_date}")
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    # Cabecalho do Relatorio Consolidado
+    writer.writerow(["ID Agente", "Nome Agente", "Data", "Segundos Planejados", "Segundos Aderentes", "Taxa Aderencia (%)"])
+    writer.writerow([
+        agent.id,
+        agent.name,
+        target_date.isoformat(),
+        result["total_planned_seconds"],
+        result["total_adherent_seconds"],
+        result["overall_adherence_rate"]
+    ])
+    writer.writerow([])  # Linha em branco
+
+    # Detalhamento de Intervalos
+    writer.writerow(["Tipo Intervalo", "Inicio Planejado", "Fim Planejado", "Segundos Planejados", "Segundos Aderentes", "Aderencia (%)"])
+    for interval in result.get("intervals", []):
+        writer.writerow([
+            interval.get("interval_type"),
+            interval.get("planned_start"),
+            interval.get("planned_end"),
+            interval.get("planned_seconds"),
+            interval.get("adherent_seconds"),
+            interval.get("adherence_rate")
+        ])
+
+    output.seek(0)
+    filename = f"aderencia_agente_{agent_id}_{target_date.isoformat()}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

@@ -67,3 +67,14 @@ def test_rota_diaria_com_token(auth_token):
     assert data["agent_id"] == 1
     assert "total_planned_seconds" in data
     assert "overall_adherence_rate" in data
+
+def test_exportacao_relatorio_csv(auth_token):
+    """Valida o download do CSV do relatório de aderência diário."""
+    response = client.get(
+        "/status/adherence/daily/1/export/csv?report_date=2026-09-15",
+        headers=auth_token
+    )
+    assert response.status_code == 200
+    assert "text/csv" in response.headers.get("content-type", "")
+    assert "ID Agente" in response.text
+    assert "João Silva" in response.text
